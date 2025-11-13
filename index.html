@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Manager Dashboard</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load D3.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Load Heroicons (via ionicons as a good substitute) -->
+    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+
+        /* Sidebar tree styles */
+        .sidebar-tree ul {
+            padding-left: 1.25rem;
+            border-left: 1px solid #e5e7eb; /* cool-gray-200 */
+            margin-left: 0.5rem; /* Equivalent to ml-2 */
+        }
+        .sidebar-tree li {
+            position: relative;
+            padding-left: 1rem; /* Space for the line */
+        }
+        /* Horizontal line for tree items */
+        .sidebar-tree li::before {
+            content: '';
+            position: absolute;
+            left: -1.25rem; /* Aligns with the parent ul's border-left */
+            top: 0.875rem; /* Adjust to vertically center with text */
+            width: 1.25rem;
+            height: 1px;
+            background-color: #e5e7eb;
+        }
+        .sidebar-tree li:last-child {
+            /* Optional: style for the last item */
+        }
+        .sidebar-tree .tree-node {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 0.25rem 0;
+        }
+        .sidebar-tree .tree-node:hover {
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        
+        /* Updated 'selected' style to match screenshot */
+        .sidebar-tree .tree-node.selected {
+            background-color: #e7f5ff; /* Lighter blue */
+            border-left: 3px solid #0078d4; /* Darker blue left border */
+            font-weight: 500;
+            color: #0078d4; /* Darker blue text */
+            margin-left: -3px; /* Offset to align border */
+            padding-left: 3px;
+        }
+        
+        .sidebar-tree .chevron {
+            transition: transform 0.2s;
+            font-size: 0.8rem;
+            margin-right: 0.25rem;
+        }
+        .sidebar-tree .chevron.expanded {
+            transform: rotate(90deg);
+        }
+        .sidebar-tree .item-icon {
+            font-size: 0.9rem;
+            margin-right: 0.25rem;
+        }
+        /* Icon colors for selected state */
+        .sidebar-tree .tree-node.selected .item-icon {
+            color: #0078d4;
+        }
+
+        /* Donut chart text */
+        .donut-chart-container {
+            position: relative;
+        }
+        .donut-chart-center-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+        }
+
+        /* Custom Modal */
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+        .modal-content {
+            transition: transform 0.25s ease;
+        }
+        .modal.hidden {
+            pointer-events: none;
+            opacity: 0;
+        }
+        .modal.hidden .modal-content {
+            transform: scale(0.95);
+        }
+
+        /* Table status icons */
+        .status-icon {
+            width: 16px;
+            height: 16px;
+            display: inline-block;
+            vertical-align: middle;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        .status-ok {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2322c55e'%3E%3Cpath fill-rule='evenodd' d='M7.2 22v-8.4H0l12-12l12 12h-7.2V22L7.2 22L7.2 22z' clip-rule='evenodd' /%3E%3C/svg%3E");
+			
+        }
+        .status-down {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ef4444'%3E%3Cpath fill-rule='evenodd' d='M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm-.53 14.03a.75.75 0 001.06 0l3-3a.75.75 0 10-1.06-1.06l-1.72 1.72V9.56a.75.75 0 00-1.5 0v5.69l-1.72-1.72a.75.75 0 00-1.06 1.06l3 3z' clip-rule='evenodd' /%3E%3C/svg%3E");
+        }
+        /* Corrected 'warn' icon to match screenshot (yellow circle with right arrow) */
+        .status-warn {
+             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f59e0b'%3E%3Cpath fill-rule='evenodd' d='M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm8.72-1.47a.75.75 0 011.06 0l2.25 2.25a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06L12.44 12l-1.47-1.47a.75.75 0 010-1.06z' clip-rule='evenodd' /%3E%3C/svg%3E");
+        }
+        .config-sync {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2322c55e'%3E%3Cpath fill-rule='evenodd' d='M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z' clip-rule='evenodd' /%3E%3C/svg%3E");
+        }
+        .config-mod {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f59e0b'%3E%3Cpath fill-rule='evenodd' d='M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm8.72-1.47a.75.75 0 011.06 0l2.25 2.25a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06L12.44 12l-1.47-1.47a.75.75 0 010-1.06z' clip-rule='evenodd' /%3E%3C/svg%3E");
+        }
+
+        /* Toolbar button style */
+        .toolbar-button {
+            display: flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border: 1px solid #d1d5db; /* gray-300 */
+            background-color: #f9fafb; /* gray-50 */
+            border-radius: 0.375rem; /* rounded-md */
+            font-size: 0.875rem; /* text-sm */
+            color: #374151; /* gray-700 */
+            transition: all 0.1s;
+        }
+        .toolbar-button:hover {
+            background-color: #f3f4f6; /* gray-100 */
+            border-color: #9ca3af; /* gray-400 */
+        }
+        .toolbar-button ion-icon {
+            font-size: 1rem;
+            margin-right: 0.25rem;
+        }
+
+    </style>
+</head>
+<body class="h-full font-sans bg-gray-100 text-gray-800" style="font-family: 'Inter', sans-serif;">
+
+    <!-- Login Page -->
+    <div id="loginPage" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-100">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm">
+            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">
+                <span class="text-red-500">Forti</span><span class="text-gray-700">Manager</span> Login
+            </h2>
+            <form id="loginForm">
+                <div class="mb-4">
+                    <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+                    <input type="text" id="username" name="username" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" required value="">
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password" name="password" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" required value="">
+                </div>
+                <p id="loginError" class="text-red-500 text-sm mb-4 text-center hidden"></p>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors">
+                    Login
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Page (Initially Hidden) -->
+    <div id="dashboardPage" class="h-full flex flex-col hidden">
+        <!-- Header -->
+        <header class="bg-white shadow-md z-10" style="background-color: #022f64;">
+            <nav class="container-fluid mx-auto px-4">
+                <div class="flex items-center justify-between h-14">
+                    <!-- Left Side: Logo & Menu -->
+                    <div class="flex items-center space-x-4">
+                        <!-- Logo (Fortinet-like) -->
+                        <div class="text-xl font-bold text-white">
+                            <span class="text-red-500">Device</span><span class="text-gray-200">Manager</span>
+                        </div>
+                        
+                        <button class="text-gray-300 hover:text-white">
+                            <ion-icon name="menu-outline" class="text-2xl"></ion-icon>
+                        </button>
+
+                        <div class="h-6 w-px bg-gray-600"></div>
+
+                        <button class="text-gray-300 hover:text-white flex items-center space-x-1 action-button">
+                            <ion-icon name="add-circle-outline" class="text-xl"></ion-icon>
+                            <span class="text-sm">Add Device</span>
+                        </button>
+                        <button class="text-gray-300 hover:text-white flex items-center space-x-1 action-button">
+                            <ion-icon name="duplicate-outline" class="text-xl"></ion-icon>
+                            <span class="text-sm">Device Group</span>
+                        </button>
+                        <button class="text-gray-300 hover:text-white flex items-center space-x-1 action-button">
+                            <ion-icon name="cloud-download-outline" class="text-xl"></ion-icon>
+                            <span class="text-sm">Install Wizard</span>
+                        </button>
+                    </div>
+
+                    <!-- Right Side: Icons & Profile -->
+                    <div class="flex items-center space-x-4">
+                        <button class="text-gray-300 hover:text-white">
+                            <ion-icon name="language-outline" class="text-xl"></ion-icon>
+                        </button>
+                        <button class="text-gray-300 hover:text-white">
+                            <ion-icon name="alert-circle-outline" class="text-xl"></ion-icon>
+                        </button>
+                        <button class="text-gray-300 hover:text-white">
+                            <ion-icon name="help-circle-outline" class="text-xl"></ion-icon>
+                        </button>
+                        <button class="text-gray-300 hover:text-white relative">
+                            <ion-icon name="notifications-outline" class="text-xl"></ion-icon>
+                            <span class="absolute -top-1 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">2</span>
+                        </button>
+                        <button class="flex items-center text-gray-300 hover:text-white">
+                            <span class="bg-gray-700 text-gray-200 rounded-full w-7 h-7 flex items-center justify-center text-sm font-semibold">A</span>
+                        </button>
+                        <div class="h-6 w-px bg-gray-600"></div>
+                        <button id="logoutButton" class="text-gray-300 hover:text-white flex items-center space-x-1">
+                            <ion-icon name="log-out-outline" class="text-xl"></ion-icon>
+                            <span class="text-sm">Logout</span>
+                        </button>
+                    </div>
+                </div>
+            </nav>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex overflow-hidden">
+            
+            <!-- Sidebar -->
+            <aside class="w-80 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
+                <!-- Sidebar Header -->
+                <div class="p-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold">Device & Groups</h2>
+                </div>
+                
+                <!-- Sidebar Search -->
+                <div class="p-4 border-b border-gray-200">
+                    <div class="relative">
+                        <input type="text" id="sidebarSearch" placeholder="Search..." class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <ion-icon name="search-outline" class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"></ion-icon>
+                    </div>
+                </div>
+
+                <!-- Sidebar Navigation Tree -->
+                <nav class="flex-1 p-4 overflow-y-auto sidebar-tree" id="sidebarTree">
+                    <!-- Tree items will be dynamically generated -->
+                </nav>
+
+                <!-- Sidebar Footer -->
+                <div class="p-4 mt-auto border-t border-gray-200 bg-gray-50">
+                    <span class="font-extrabold text-xl text-gray-800">FORTINET.</span>
+                </div>
+            </aside>
+
+            <!-- Content Pane -->
+            <main class="flex-1 p-4 bg-gray-100 overflow-y-auto">
+                
+                <!-- Dashboard Charts -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    
+                    <!-- Chart 1: Connectivity -->
+                    <div class="bg-white p-4 rounded-lg shadow border border-gray-200 flex items-center">
+                        <div id="chart1" class="w-36 h-36 donut-chart-container">
+                            <div class="donut-chart-center-text">
+                                <span class="text-3xl font-bold text-gray-800">0</span>
+                                <div class="text-sm text-gray-500">Devices</div>
+                            </div>
+                        </div>
+                        <div class="ml-4 space-y-2">
+                            <h3 class="text-md font-semibold text-gray-700">Connectivity</h3>
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                                <span class="text-sm text-gray-600">Connected</span>
+                                <span class="text-sm font-medium text-gray-800" id="chart1-val1">0</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                                <span class="text-sm text-gray-600">Offline</span>
+                                <span class="text-sm font-medium text-gray-800" id="chart1-val2">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart 2: Device Config Status -->
+                    <div class="bg-white p-4 rounded-lg shadow border border-gray-200 flex items-center">
+                        <div id="chart2" class="w-36 h-36 donut-chart-container">
+                             <div class="donut-chart-center-text">
+                                <span class="text-3xl font-bold text-gray-800">0</span>
+                                <div class="text-sm text-gray-500">Devices and VDOMs</div>
+                            </div>
+                        </div>
+                        <div class="ml-4 space-y-2">
+                            <h3 class="text-md font-semibold text-gray-700">Device Config Status</h3>
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                                <span class="text-sm text-gray-600">Conflict</span>
+                                <span class="text-sm font-medium text-gray-800" id="chart2-val1">0</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                                <span class="text-sm text-gray-600">Synchronized</span>
+                                <span class="text-sm font-medium text-gray-800" id="chart2-val2">0</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+                                <span class="text-sm text-gray-600">Modified</span>
+                                <span class="text-sm font-medium text-gray-800" id="chart2-val3">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart 3: Policy Package Status -->
+                    <div class="bg-white p-4 rounded-lg shadow border border-gray-200 flex items-center">
+                        <div id="chart3" class="w-36 h-36 donut-chart-container">
+                             <div class="donut-chart-center-text">
+                                <span class="text-3xl font-bold text-gray-800">0</span>
+                                <div class="text-sm text-gray-500">VDOMs</div>
+                            </div>
+                        </div>
+                        <div class="ml-4 space-y-2">
+                            <h3 class="text-md font-semibold text-gray-700">Policy Package Status</h3>
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                                <span class="text-sm text-gray-600">Installed</span>
+                                <span class="text-sm font-medium text-gray-800" id="chart3-val2">0</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                                <span class="text-sm text-gray-600">Modified</span>
+                                <span class="text-sm font-medium text-gray-800" id="chart3-val3">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toolbar -->
+                <div class="bg-white rounded-t-lg shadow border border-gray-200 border-b-0 p-3 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <button class="toolbar-button action-button">
+                            <ion-icon name="create-outline"></ion-icon> Edit
+                        </button>
+                        <button class="toolbar-button action-button">
+                            <ion-icon name="trash-outline"></ion-icon> Delete
+                        </button>
+                        <button class="toolbar-button action-button">
+                            <ion-icon name="log-in-outline"></ion-icon> Import Configuration
+                        </button>
+                        <button class="toolbar-button action-button">
+                            <ion-icon name="cloud-download-outline"></ion-icon> Install
+                        </button>
+                        <button class="toolbar-button action-button">
+                            <ion-icon name="list-outline"></ion-icon> Table View
+                        </button>
+                        <button class="toolbar-button action-button">
+                            <ion-icon name="ellipsis-horizontal-outline"></ion-icon> More
+                        </button>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                         <button class="toolbar-button action-button">
+                            <ion-icon name="pie-chart-outline"></ion-icon> Show Charts
+                        </button>
+                        <div class="relative">
+                            <input type="text" id="tableSearch" placeholder="Search..." class="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <ion-icon name="search-outline" class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"></ion-icon>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Device Table -->
+                <div class="overflow-x-auto bg-white rounded-b-lg shadow border border-gray-200">
+                    <table class="w-full" id="deviceTable">
+                        <thead class="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                                <th class="p-3 w-10 text-left">
+                                    <input type="checkbox" class="rounded border-gray-300">
+                                </th>
+                                <th class="p-3 w-12 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
+                                <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <div class="flex items-center">Device Name <ion-icon name="caret-up-outline" class="ml-1"></ion-icon></div>
+                                </th>
+                                <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <div class="flex items-center">Config Status <ion-icon name="caret-down-outline" class="ml-1"></ion-icon></div>
+                                </th>
+                                <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <div class="flex items-center">Host Name <ion-icon name="caret-down-outline" class="ml-1"></ion-icon></div>
+                                </th>
+                                <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <div class="flex items-center">IP Address <ion-icon name="caret-down-outline" class="ml-1"></ion-icon></div>
+                                </th>
+                                <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <div class="flex items-center">Platform <ion-icon name="caret-down-outline" class="ml-1"></ion-icon></div>
+                                </th>
+                                <th class="p-3 w-10 text-right">
+                                    <button class="text-gray-500 hover:text-blue-600">
+                                        <ion-icon name="settings-outline" class="text-lg"></ion-icon>
+                                    </button>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200" id="deviceTableBody">
+                            <!-- Table rows will be dynamically generated -->
+                        </tbody>
+                    </table>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- Custom Modal -->
+    <div id="customModal" class="modal hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="modal-content bg-white p-6 rounded-lg shadow-xl w-full max-w-md m-4">
+            <div class="flex justify-between items-center pb-3">
+                <h3 class="text-lg font-medium" id="modalTitle">Alert</h3>
+                <button id="closeModal" class="text-gray-400 hover:text-gray-600">
+                    <ion-icon name="close-outline" class="text-2xl"></ion-icon>
+                </button>
+            </div>
+            <div class="py-4">
+                <p id="modalMessage">Readonly user! Access Denied!().</p>
+            </div>
+            <div class="flex justify-end pt-3">
+                <button id="okModal" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- Mock Data ---
+        const sidebarTreeData = [
+            {
+                name: "Managed FortiGate",
+                count: 1490,
+                icon: "server-outline", // Updated Icon
+                children: [
+                    { name: "Unauthorized Devices", count: 3, icon: "hardware-chip-outline" } // Updated Icon
+                ]
+            },
+            {
+                name: "BESCOM",
+                count: 761,
+                icon: "folder-outline",
+                children: [
+                    { 
+                        name: "BMAZ_North", 
+                        count: 131,
+                        dataKey: "BMAZ_North",
+                        icon: "folder-outline",
+                    },
+                    { 
+                        name: "BMAZ_South", 
+                        count: 133,
+                        selected: true,
+                        dataKey: "BMAZ_South",
+                        icon: "folder-outline",
+                    },
+                    { 
+                        name: "CTAZ", 
+                        count: 200,
+                        dataKey: "CTAZ",
+                        icon: "folder-outline",
+                    },
+                    { 
+                        name: "BRAZ", 
+                        count: 297,
+                        dataKey: "BRAZ",
+                        icon: "folder-outline",
+                    }
+                ]
+            },
+            
+            { name: "Scripts", count: 0, icon: "reader-outline" }, // Updated Icon
+            { name: "Provisioning Templates", count: 0, icon: "layers-outline" }, // Updated Icon
+            { name: "Firmware Templates", count: 0, icon: "archive-outline" }, // Updated Icon
+            { name: "Monitors", count: 0, icon: "bar-chart-outline" } // Updated Icon
+        ];
+
+        // --- Data for different groups ---
+        const allGroupData = {
+            "BMAZ_South": [
+                { 
+                    name: "110001-BMAZ-SOUTH-596", 
+                    configStatus: "Synchronized", 
+                    hostName: "110001-BMAZ-SOUTH-5", 
+                    ip: "10.39.11.234", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+                { 
+                    name: "120002-SouthCircle-193", 
+                    configStatus: "Synchronized", 
+                    hostName: "120002-SouthCircle-193", 
+                    ip: "10.39.5.194", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+                { 
+                    name: "120008-WestCircle-136", 
+                    configStatus: "Synchronized", 
+                    hostName: "120008-WestCircle-136", 
+                    ip: "10.39.4.153", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+                { 
+                    name: "130003-JayanagarDivision-219", 
+                    configStatus: "Modified", 
+                    hostName: "130003-JayanagarDivisi", 
+                    ip: "106.51.200.107", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-down",
+                    configIcon: "config-mod"
+                },
+                { 
+                    name: "130004-KoramangalaDivision-247", 
+                    configStatus: "Synchronized", 
+                    hostName: "130004-KoramangalaDiv", 
+                    ip: "10.39.6.154", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+                { 
+                    name: "130005-HSRLayoutDivision-194", 
+                    configStatus: "Modified (recent activity)", 
+                    hostName: "130005-HSRLayoutDivisi", 
+                    ip: "10.39.5.197", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-mod"
+                },
+                { 
+                    name: "130006-RajajiNagarDivision-172", 
+                    configStatus: "Modified (recent activity)", 
+                    hostName: "130006-RajajiNagarDivisi", 
+                    ip: "10.255.241.101", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-warn",
+                    configIcon: "config-mod"
+                },
+                { 
+                    name: "130009-RajaRajeshwariDivision-153", 
+                    configStatus: "Synchronized", 
+                    hostName: "130009-RajaRajeshwariDivi", 
+                    ip: "10.20.8.105", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+            ],
+            "BMAZ_North": [
+                { 
+                    name: "210001-BMAZ-NORTH-001", 
+                    configStatus: "Synchronized", 
+                    hostName: "210001-BMAZ-NORTH-1", 
+                    ip: "10.40.1.1", 
+                    platform: "FortiGate-60F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+                { 
+                    name: "210002-BMAZ-NORTH-002", 
+                    configStatus: "Modified", 
+                    hostName: "210002-BMAZ-NORTH-2", 
+                    ip: "10.40.1.2", 
+                    platform: "FortiGate-60F",
+                    statusIcon: "status-warn",
+                    configIcon: "config-mod"
+                },
+                { 
+                    name: "210003-BMAZ-NORTH-003", 
+                    configStatus: "Synchronized", 
+                    hostName: "210003-BMAZ-NORTH-3", 
+                    ip: "10.40.1.3", 
+                    platform: "FortiGate-40F",
+                    statusIcon: "status-down",
+                    configIcon: "config-sync"
+                }
+            ],
+            "CTAZ": [
+                { 
+                    name: "310001-CTAZ-001", 
+                    configStatus: "Synchronized", 
+                    hostName: "310001-CTAZ-1", 
+                    ip: "10.50.1.1", 
+                    platform: "FortiGate-100F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+                { 
+                    name: "310002-CTAZ-002", 
+                    configStatus: "Synchronized", 
+                    hostName: "310002-CTAZ-2", 
+                    ip: "10.50.1.2", 
+                    platform: "FortiGate-100F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                }
+            ],
+            "BRAZ": [
+                { 
+                    name: "410001-BRAZ-001", 
+                    configStatus: "Modified", 
+                    hostName: "410001-BRAZ-1", 
+                    ip: "10.60.1.1", 
+                    platform: "FortiGate-200F",
+                    statusIcon: "status-warn",
+                    configIcon: "config-mod"
+                },
+                { 
+                    name: "410002-BRAZ-002", 
+                    configStatus: "Synchronized", 
+                    hostName: "410002-BRAZ-2", 
+                    ip: "10.60.1.2", 
+                    platform: "FortiGate-200F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+                { 
+                    name: "410003-BRAZ-003", 
+                    configStatus: "Modified", 
+                    hostName: "410003-BRAZ-3", 
+                    ip: "10.60.1.3", 
+                    platform: "FortiGate-100F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-mod"
+                },
+                { 
+                    name: "410004-BRAZ-004", 
+                    configStatus: "Synchronized", 
+                    hostName: "410004-BRAZ-4", 
+                    ip: "10.60.1.4", 
+                    platform: "FortiGate-100F",
+                    statusIcon: "status-ok",
+                    configIcon: "config-sync"
+                },
+                { 
+                    name: "410005-BRAZ-005", 
+                    configStatus: "Conflict", 
+                    hostName: "410005-BRAZ-5", 
+                    ip: "10.60.1.5", 
+                    platform: "FortiGate-60F",
+                    statusIcon: "status-down",
+                    configIcon: "config-mod" // Note: A real 'conflict' icon would be better
+                }
+            ]
+        };
+
+        // --- Chart Drawing Function ---
+        function createDonutChart(containerId, data) {
+            const width = 144; // w-36
+            const height = 144; // h-36
+            const margin = 10;
+            const radius = Math.min(width, height) / 2 - margin;
+            const innerRadius = radius * 0.60; // Broader ring
+
+            // Remove any existing SVG
+            d3.select(`#${containerId}`).select("svg").remove();
+
+            const svg = d3.select(`#${containerId}`)
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .append("g")
+                .attr("transform", `translate(${width / 2},${height / 2})`);
+
+            const color = d3.scaleOrdinal()
+                .domain(data.map(d => d.name))
+                .range(data.map(d => d.color));
+
+            const pie = d3.pie()
+                .value(d => d.value)
+                .sort(null);
+
+            const arc = d3.arc()
+                .innerRadius(innerRadius)
+                .outerRadius(radius);
+
+            const path = svg.selectAll("path")
+                .data(pie(data))
+                .enter()
+                .append("path")
+                .attr("d", arc)
+                .attr("fill", d => color(d.data.name));
+        }
+        
+        // --- Modal ---
+        const modal = document.getElementById('customModal');
+        const closeModal = document.getElementById('closeModal');
+        const okModal = document.getElementById('okModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+
+        function showModal(title, message) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            modal.classList.remove('hidden');
+        }
+
+        function hideModal() {
+            modal.classList.add('hidden');
+        }
+
+        closeModal.addEventListener('click', hideModal);
+        okModal.addEventListener('click', hideModal);
+        
+        // --- Sidebar Tree ---
+        function createTree(container, data) {
+            const ul = document.createElement('ul');
+            data.forEach(item => {
+                const li = document.createElement('li');
+                
+                const node = document.createElement('div');
+                node.className = 'tree-node flex justify-between items-center pr-2';
+                if (item.selected) {
+                    node.classList.add('selected');
+                }
+                
+                if (item.dataKey) {
+                    node.dataset.key = item.dataKey; // Store the key for click events
+                }
+
+                const nodeLeft = document.createElement('div');
+                nodeLeft.className = 'flex items-center truncate';
+
+                // Chevron
+                if (item.children && item.children.length > 0) {
+                    const chevron = document.createElement('span');
+                    chevron.className = 'chevron text-gray-500';
+                    chevron.innerHTML = '<ion-icon name="chevron-forward-outline"></ion-icon>';
+                    if (item.selected) { // Default expanded if selected
+                         chevron.classList.add('expanded');
+                    }
+                    nodeLeft.appendChild(chevron);
+                } else {
+                    const spacer = document.createElement('span');
+                    spacer.className = 'w-5'; // Match chevron width
+                    nodeLeft.appendChild(spacer);
+                }
+                
+                // Item Icon
+                if (item.icon) {
+                    const icon = document.createElement('span');
+                    icon.className = 'item-icon text-blue-600';
+                    icon.innerHTML = `<ion-icon name="${item.icon}"></ion-icon>`;
+                    nodeLeft.appendChild(icon);
+                }
+
+                // Name
+                const name = document.createElement('span');
+                name.textContent = item.name;
+                name.className = 'text-sm truncate';
+                nodeLeft.appendChild(name);
+                
+                node.appendChild(nodeLeft);
+
+                // Count
+                if (item.count > 0) {
+                    const count = document.createElement('span');
+                    count.textContent = `(${item.count})`;
+                    count.className = 'text-xs text-gray-500 ml-1';
+                    node.appendChild(count);
+                }
+
+                li.appendChild(node);
+
+                // Children
+                if (item.children && item.children.length > 0) {
+                    const childUl = createTree(document.createElement('div'), item.children);
+                    if (!item.selected) { // Default collapsed
+                        childUl.style.display = 'none';
+                    }
+                    li.appendChild(childUl);
+                    
+                    // Click to expand/collapse
+                    node.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const chevron = node.querySelector('.chevron');
+                        const isExpanded = childUl.style.display !== 'none';
+                        childUl.style.display = isExpanded ? 'none' : 'block';
+                        if (chevron) {
+                            chevron.classList.toggle('expanded', !isExpanded);
+                        }
+                    });
+                }
+                
+                // Click to select
+                node.addEventListener('click', () => {
+                    // Remove 'selected' from all nodes
+                    document.querySelectorAll('.sidebar-tree .selected').forEach(sel => {
+                        sel.classList.remove('selected');
+                    });
+                    // Add 'selected' to this node
+                    node.classList.add('selected');
+
+                    // Update dashboard if node has a dataKey
+                    if (node.dataset.key) {
+                        updateDashboard(node.dataset.key);
+                    }
+                });
+
+                ul.appendChild(li);
+            });
+            container.appendChild(ul);
+            return ul;
+        }
+
+        // --- Table ---
+        function renderTable(data) {
+            const tableBody = document.getElementById('deviceTableBody');
+            tableBody.innerHTML = ''; // Clear existing
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                
+                row.innerHTML = `
+                    <td class="p-3">
+                        <input type="checkbox" class="rounded border-gray-300">
+                    </td>
+                    <td class="p-3">
+                        <span class="status-icon ${item.statusIcon}"></span>
+                    </td>
+                    <td class="p-3 text-sm text-gray-700">${item.name}</td>
+                    <td class="p-3 text-sm text-gray-700">
+                        <span class="status-icon ${item.configIcon} mr-1"></span>
+                        ${item.configStatus}
+                    </td>
+                    <td class="p-3 text-sm text-gray-700">${item.hostName}</td>
+                    <td class="p-3 text-sm text-gray-700">${item.ip}</td>
+                    <td class="p-3 text-sm text-gray-700">${item.platform}</td>
+                    <td class="p-3"></td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // --- Sidebar Search ---
+        function filterTree(filter) {
+            const treeContainer = document.getElementById('sidebarTree');
+            treeContainer.querySelectorAll('li').forEach(li => {
+                const node = li.querySelector('.tree-node');
+                const name = node.querySelector('.truncate').textContent.toLowerCase();
+                const hasChildren = li.querySelector('ul');
+                
+                if (name.includes(filter)) {
+                    // Show this item and all its parents
+                    li.style.display = 'block';
+                    let parent = li.parentElement;
+                    while (parent && parent !== treeContainer) {
+                        if (parent.tagName === 'LI') {
+                            parent.style.display = 'block';
+                        }
+                        parent = parent.parentElement;
+                    }
+                } else if (!hasChildren) {
+                    // If it's a leaf node and doesn't match, hide it
+                    li.style.display = 'none';
+                } else {
+                    // If it has children, its visibility depends on them
+                    // We'll let the children's logic show the parent
+                    li.style.display = 'block'; // Assume visible unless all children are hidden
+                }
+            });
+            
+            // Second pass to hide parents with no visible children
+             treeContainer.querySelectorAll('li').forEach(li => {
+                 const hasChildren = li.querySelector('ul');
+                 if(hasChildren) {
+                     const visibleChildren = Array.from(hasChildren.querySelectorAll('li')).some(childLi => childLi.style.display !== 'none');
+                     if (!visibleChildren) {
+                         const name = li.querySelector('.tree-node .truncate').textContent.toLowerCase();
+                         if (!name.includes(filter)) {
+                            li.style.display = 'none';
+                         }
+                     }
+                 }
+             });
+        }
+
+        // --- Table Search ---
+        function filterTable(filter) {
+            const tableBody = document.getElementById('deviceTableBody');
+            tableBody.querySelectorAll('tr').forEach(row => {
+                const deviceName = row.cells[2].textContent.toLowerCase();
+                if (deviceName.includes(filter)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        // --- Dashboard Update Function ---
+        function updateDashboard(groupKey) {
+            const deviceData = allGroupData[groupKey] || [];
+            
+            // 1. Render Table
+            renderTable(deviceData);
+            // Reset table search
+            document.getElementById('tableSearch').value = ''; 
+            filterTable('');
+
+            // 2. Calculate Stats and Update Charts
+            const totalDevices = deviceData.length;
+            const zeroData = [{name: "No Data", value: 1, color: "#e5e7eb"}]; // gray-200
+
+            // Connectivity (Chart 1)
+            const connectedCount = deviceData.filter(d => d.statusIcon === 'status-ok' || d.statusIcon === 'status-warn').length;
+            const offlineCount = deviceData.filter(d => d.statusIcon === 'status-down').length;
+            
+            const chart1Data = [
+                { name: "Connected", value: connectedCount, color: "#22c55e" }, // green-500
+                { name: "Offline", value: offlineCount, color: "#ef4444" }, // red-500
+            ];
+            createDonutChart('chart1', totalDevices > 0 ? chart1Data : zeroData);
+            document.querySelector('#chart1 .donut-chart-center-text span').textContent = totalDevices;
+            document.getElementById('chart1-val1').textContent = connectedCount;
+            document.getElementById('chart1-val2').textContent = offlineCount;
+
+            // Device Config Status (Chart 2)
+            const conflictCount = deviceData.filter(d => d.configStatus.toLowerCase().includes('conflict')).length;
+            const syncCount = deviceData.filter(d => d.configStatus.toLowerCase().includes('synchronized')).length;
+            const modCount = deviceData.filter(d => d.configStatus.toLowerCase().includes('modified')).length;
+
+            const chart2Data = [
+                { name: "Conflict", value: conflictCount, color: "#ef4444" }, // red-500
+                { name: "Synchronized", value: syncCount, color: "#22c55e" }, // green-500
+                { name: "Modified", value: modCount, color: "#f59e0b" }, // yellow-500 (amber-500)
+            ];
+            createDonutChart('chart2', totalDevices > 0 ? chart2Data : zeroData);
+            document.querySelector('#chart2 .donut-chart-center-text span').textContent = totalDevices;
+            document.getElementById('chart2-val1').textContent = conflictCount;
+            document.getElementById('chart2-val2').textContent = syncCount;
+            document.getElementById('chart2-val3').textContent = modCount;
+
+            // Policy Package Status (Chart 3)
+            const installedCount = connectedCount; // Linked to table arrows
+            const policyModCount = offlineCount; // Linked to table arrows
+            
+            const chart3Data = [
+                { name: "Installed", value: installedCount, color: "#22c55e" }, // green-500
+                { name: "Modified", value: policyModCount, color: "#ef4444" }, // red-500
+            ];
+            createDonutChart('chart3', totalDevices > 0 ? chart3Data : zeroData);
+            document.querySelector('#chart3 .donut-chart-center-text span').textContent = totalDevices;
+            document.getElementById('chart3-val2').textContent = installedCount;
+            document.getElementById('chart3-val3').textContent = policyModCount;
+        }
+
+
+        // --- Dashboard Initialization Function ---
+        function initializeApp() {
+            // Render Sidebar
+            const treeContainer = document.getElementById('sidebarTree');
+            treeContainer.innerHTML = ''; // Clear existing tree before rendering
+            createTree(treeContainer, sidebarTreeData);
+            
+            // --- Initial Dashboard Load ---
+            // Find the selected item's dataKey and load it
+            const selectedNode = document.querySelector('.sidebar-tree .selected');
+            const initialDataKey = selectedNode ? selectedNode.dataset.key : 'BMAZ_South'; // Default
+            updateDashboard(initialDataKey);
+
+            
+            // --- Event Listeners (for Dashboard) ---
+            
+            // Sidebar Search
+            const sidebarSearch = document.getElementById('sidebarSearch');
+            sidebarSearch.addEventListener('input', (e) => {
+                filterTree(e.target.value.toLowerCase());
+            });
+
+            // Modal Action Buttons
+            document.querySelectorAll('.action-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    // Get the text content, trim it, and find the first word.
+                    const buttonText = e.currentTarget.textContent.trim().split(" ")[0];
+                    showModal('Access Denied', `You are a read only user! Unauthorized Access.`);
+                });
+            });
+
+            // Table Search
+            const tableSearch = document.getElementById('tableSearch');
+            tableSearch.addEventListener('input', (e) => {
+                filterTable(e.target.value.toLowerCase());
+            });
+        }
+
+
+        // --- Page Load ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Login Logic ---
+            const loginPage = document.getElementById('loginPage');
+            const dashboardPage = document.getElementById('dashboardPage');
+            const loginForm = document.getElementById('loginForm');
+            const loginError = document.getElementById('loginError');
+            const logoutButton = document.getElementById('logoutButton');
+            const passwordInput = document.getElementById('password');
+
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault(); // Stop page from reloading
+
+                const username = e.target.username.value;
+                const password = e.target.password.value;
+
+                // --- Hardcoded "secure" login credentials ---
+                // For a real app, this would be an API call to a server.
+                if (username === 'se_office_bmasz' && password === 'Bescom@113111') {
+                    // Successful login
+                    loginPage.classList.add('hidden');
+                    dashboardPage.classList.remove('hidden');
+                    loginError.classList.add('hidden');
+                    
+                    // Now that the dashboard is visible, initialize the app
+                    initializeApp();
+					
+					  } else if (username === 'se_office_bmanz' && password === 'Bescom@113112') {
+                    // Successful login
+                    loginPage.classList.add('hidden');
+                    dashboardPage.classList.remove('hidden');
+                    loginError.classList.add('hidden');
+                    
+                    // Now that the dashboard is visible, initialize the app
+                    initializeApp();
+
+					} else if (username === 'se_office_braz' && password === 'Bescom@113113') {
+                    // Successful login
+                    loginPage.classList.add('hidden');
+                    dashboardPage.classList.remove('hidden');
+                    loginError.classList.add('hidden');
+                    
+                    // Now that the dashboard is visible, initialize the app
+                    initializeApp();
+					
+					} else if (username === 'se_office_ctaz' && password === 'Bescom@113114') {
+                    // Successful login
+                    loginPage.classList.add('hidden');
+                    dashboardPage.classList.remove('hidden');
+                    loginError.classList.add('hidden');
+                    
+                    // Now that the dashboard is visible, initialize the app
+                    initializeApp();
+
+
+                } else {
+                    // Failed login
+                    loginError.textContent = 'Invalid username or password.';
+                    loginError.classList.remove('hidden');
+                }
+            });
+
+            // --- Logout Logic ---
+            logoutButton.addEventListener('click', () => {
+                dashboardPage.classList.add('hidden');
+                loginPage.classList.remove('hidden');
+                passwordInput.value = ""; // Clear password field
+                loginError.classList.add('hidden');
+            });
+        });
+
+    </script>
+</body>
+</html>
